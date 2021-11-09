@@ -12,6 +12,7 @@ use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::os::unix::io::{AsRawFd, FromRawFd};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::sync::atomic::Ordering;
+use super::peer_registry::PeerRegistry;
 
 const SOCK_DIR: &str = "/var/run/wireguard/";
 
@@ -32,7 +33,8 @@ fn create_sock_dir() {
     }
 }
 
-impl<T: Tun, S: Sock> Device<T, S> {
+
+impl<T: Tun, S: Sock, P: PeerRegistry> Device<T, S, P> {
     /// Register the api handler for this Device. The api handler receives stream connections on a Unix socket
     /// with a known path: /var/run/wireguard/{tun_name}.sock.
     pub fn register_api_handler(&mut self) -> Result<(), Error> {
@@ -152,7 +154,7 @@ impl<T: Tun, S: Sock> Device<T, S> {
 }
 
 #[allow(unused_must_use)]
-fn api_get<T: Tun, S: Sock>(writer: &mut BufWriter<&UnixStream>, d: &Device<T, S>) -> i32 {
+fn api_get<T: Tun, S: Sock, P: PeerRegistry>(writer: &mut BufWriter<&UnixStream>, d: &Device<T, S, P>) -> i32 {
     // get command requires an empty line, but there is no reason to be religious about it
     if let Some(ref k) = d.key_pair {
         writeln!(writer, "private_key={}", encode_hex(k.0.as_bytes()));
@@ -198,9 +200,9 @@ fn api_get<T: Tun, S: Sock>(writer: &mut BufWriter<&UnixStream>, d: &Device<T, S
     0
 }
 
-fn api_set<T: Tun, S: Sock>(
+fn api_set<T: Tun, S: Sock, P: PeerRegistry>(
     reader: &mut BufReader<&UnixStream>,
-    d: &mut LockReadGuard<Device<T, S>>,
+    d: &mut LockReadGuard<Device<T, S, P>>,
 ) -> i32 {
     d.try_writeable(
         |device| device.trigger_yield(),
@@ -263,9 +265,9 @@ fn api_set<T: Tun, S: Sock>(
     .unwrap_or(EIO)
 }
 
-fn api_set_peer<T: Tun, S: Sock>(
+fn api_set_peer<T: Tun, S: Sock, P: PeerRegistry>(
     reader: &mut BufReader<&UnixStream>,
-    d: &mut Device<T, S>,
+    d: &mut Device<T, S, P>,
     pub_key: X25519PublicKey,
 ) -> i32 {
     let mut cmd = String::new();
@@ -338,7 +340,7 @@ fn api_set_peer<T: Tun, S: Sock>(
                         preshared_key,
                     );
                     match val.parse::<X25519PublicKey>() {
-                        Ok(key) => return api_set_peer::<T, S>(reader, d, key),
+                        Ok(key) => return api_set_peer::<T, S, P>(reader, d, key),
                         Err(_) => return EINVAL,
                     }
                 }

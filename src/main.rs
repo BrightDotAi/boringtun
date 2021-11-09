@@ -16,6 +16,7 @@ use daemonize::Daemonize;
 use std::fs::File;
 use std::os::unix::net::UnixDatagram;
 use std::process::exit;
+use crate::device::peer_registry::EmptyPeerRegistry;
 
 fn check_tun_name(_v: String) -> Result<(), String> {
     #[cfg(any(target_os = "macos", target_os = "ios"))]
@@ -157,11 +158,12 @@ fn main() {
         #[cfg(target_os = "linux")]
         uapi_fd,
         use_connected_socket: !matches.is_present("disable-connected-udp"),
+        peer_registry: None,
         #[cfg(target_os = "linux")]
         use_multi_queue: !matches.is_present("disable-multi-queue"),
     };
 
-    let mut device_handle: DeviceHandle = match DeviceHandle::new(&tun_name, config) {
+    let mut device_handle: DeviceHandle<EmptyPeerRegistry> = match DeviceHandle::new(&tun_name, config) {
         Ok(d) => d,
         Err(e) => {
             // Notify parent that tunnel initialization failed

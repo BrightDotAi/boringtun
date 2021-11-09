@@ -25,7 +25,7 @@ pub struct Peer<S: Sock> {
     preshared_key: Option<[u8; 32]>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AllowedIP {
     pub addr: IpAddr,
     pub cidr: u8,

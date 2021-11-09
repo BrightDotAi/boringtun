@@ -131,7 +131,7 @@ impl Drop for X25519SecretKey {
 }
 
 #[repr(C)]
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 /// A public X25519, derived from a secret key.
 pub struct X25519PublicKey {
     internal: [u8; 32],

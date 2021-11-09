@@ -28,6 +28,8 @@ pub mod tun;
 #[path = "udp_unix.rs"]
 pub mod udp;
 
+pub mod peer_registry;
+
 use std::collections::HashMap;
 use std::convert::From;
 use std::io;
@@ -50,6 +52,7 @@ use tun::{errno, errno_str, TunSocket};
 use udp::UDPSocket;
 
 use dev_lock::{Lock, LockReadGuard};
+use peer_registry::{PeerRegistry, PrePeer};
 
 const HANDSHAKE_RATE_LIMIT: u64 = 100; // The number of handshakes per second we can tolerate before using cookies
 
@@ -85,8 +88,8 @@ enum Action {
 }
 
 // Event handler function
-type Handler<T, S> =
-    Box<dyn Fn(&mut LockReadGuard<Device<T, S>>, &mut ThreadData<T>) -> Action + Send + Sync>;
+type Handler<T, S, P> =
+    Box<dyn Fn(&mut LockReadGuard<Device<T, S, P>>, &mut ThreadData<T>) -> Action + Send + Sync>;
 
 // The trait satisfied by tunnel device implementations.
 pub trait Tun: 'static + AsRawFd + Sized + Send + Sync {
@@ -122,25 +125,27 @@ pub trait Sock: 'static + AsRawFd + Sized + Send + Sync {
     fn shutdown(&self);
 }
 
-pub struct DeviceHandle<T: Tun = TunSocket, S: Sock = UDPSocket> {
-    device: Arc<Lock<Device<T, S>>>, // The interface this handle owns
+pub struct DeviceHandle<P: PeerRegistry, T: Tun = TunSocket, S: Sock = UDPSocket> {
+    device: Arc<Lock<Device<T, S, P>>>, // The interface this handle owns
     threads: Vec<JoinHandle<()>>,
 }
 
-pub struct DeviceConfig {
+pub struct DeviceConfig<P> where P: PeerRegistry {
     pub n_threads: usize,
     pub use_connected_socket: bool,
+    pub peer_registry: Option<P>,
     #[cfg(target_os = "linux")]
     pub use_multi_queue: bool,
     #[cfg(target_os = "linux")]
     pub uapi_fd: i32,
 }
 
-impl Default for DeviceConfig {
+impl<P> Default for DeviceConfig<P> where P: PeerRegistry {
     fn default() -> Self {
         DeviceConfig {
             n_threads: 4,
             use_connected_socket: true,
+            peer_registry: None,
             #[cfg(target_os = "linux")]
             use_multi_queue: true,
             #[cfg(target_os = "linux")]
@@ -149,9 +154,9 @@ impl Default for DeviceConfig {
     }
 }
 
-pub struct Device<T: Tun, S: Sock> {
+pub struct Device<T: Tun, S: Sock, P: PeerRegistry> {
     key_pair: Option<(Arc<X25519SecretKey>, Arc<X25519PublicKey>)>,
-    queue: Arc<EventPoll<Handler<T, S>>>,
+    queue: Arc<EventPoll<Handler<T, S, P>>>,
 
     listen_port: u16,
     fwmark: Option<u32>,
@@ -168,7 +173,7 @@ pub struct Device<T: Tun, S: Sock> {
     peers_by_idx: HashMap<u32, Arc<Peer<S>>>,
     next_index: u32,
 
-    config: DeviceConfig,
+    config: DeviceConfig<P>,
 
     cleanup_paths: Vec<String>,
 
@@ -186,10 +191,10 @@ struct ThreadData<T: Tun> {
     dst_buf: [u8; MAX_UDP_SIZE],
 }
 
-impl<T: Tun, S: Sock> DeviceHandle<T, S> {
-    pub fn new(name: &str, config: DeviceConfig) -> Result<DeviceHandle<T, S>, Error> {
+impl<T: Tun, S: Sock, P: PeerRegistry> DeviceHandle<P, T, S> {
+    pub fn new(name: &str, config: DeviceConfig<P>) -> Result<DeviceHandle<P, T, S>, Error> {
         let n_threads = config.n_threads;
-        let mut wg_interface = Device::<T, S>::new(name, config)?;
+        let mut wg_interface = Device::<T, S, P>::new(name, config)?;
         wg_interface.open_listen_socket(0)?; // Start listening on a random port
 
         let interface_lock = Arc::new(Lock::new(wg_interface));
@@ -222,7 +227,7 @@ impl<T: Tun, S: Sock> DeviceHandle<T, S> {
         }
     }
 
-    fn event_loop(_i: usize, device: &Lock<Device<T, S>>) {
+    fn event_loop(_i: usize, device: &Lock<Device<T, S, P>>) {
         #[cfg(target_os = "linux")]
         let mut thread_local = ThreadData {
             src_buf: [0u8; MAX_UDP_SIZE],
@@ -292,14 +297,14 @@ impl<T: Tun, S: Sock> DeviceHandle<T, S> {
     }
 }
 
-impl<T: Tun, S: Sock> Drop for DeviceHandle<T, S> {
+impl<T: Tun, S: Sock, P: PeerRegistry> Drop for DeviceHandle<P, T, S> {
     fn drop(&mut self) {
         self.device.read().trigger_exit();
         self.clean();
     }
 }
 
-impl<T: Tun, S: Sock> Device<T, S> {
+impl<T: Tun, S: Sock, P: PeerRegistry> Device<T, S, P> {
     fn next_index(&mut self) -> u32 {
         let next_index = self.next_index;
         self.next_index += 1;
@@ -372,8 +377,8 @@ impl<T: Tun, S: Sock> Device<T, S> {
         tracing::info!("Peer added");
     }
 
-    pub fn new(name: &str, config: DeviceConfig) -> Result<Device<T, S>, Error> {
-        let poll = EventPoll::<Handler<T, S>>::new()?;
+    pub fn new(name: &str, config: DeviceConfig<P>) -> Result<Device<T, S, P>, Error> {
+        let poll = EventPoll::<Handler<T, S, P>>::new()?;
 
         // Create a tunnel device
         let iface = Arc::new(T::new(name)?.set_non_blocking()?);
@@ -616,6 +621,8 @@ impl<T: Tun, S: Sock> Device<T, S> {
         self.queue.new_event(
             udp.as_raw_fd(),
             Box::new(move |d, t| {
+                let mut pre_peer: Option<PrePeer> = None;
+
                 // Handler that handles anonymous packets over UDP
                 let mut iter = MAX_ITR;
                 let (private_key, public_key) = d.key_pair.as_ref().expect("Key not set");
@@ -640,8 +647,20 @@ impl<T: Tun, S: Sock> Device<T, S> {
                             parse_handshake_anon(&private_key, &public_key, &p)
                                 .ok()
                                 .and_then(|hh| {
-                                    d.peers
-                                        .get(&X25519PublicKey::from(&hh.peer_static_public[..]))
+                                    let pub_key = X25519PublicKey::from(&hh.peer_static_public[..]);
+                                    let peer = d.peers.get(&pub_key);
+                                    return if peer.is_none() {
+                                        match &d.config.peer_registry {
+                                            Some(pr) => {
+                                                // Look for a peer in the registry
+                                                pre_peer = pr.get(pub_key);
+                                            },
+                                            None => {}
+                                        };
+                                        None
+                                    } else {
+                                        peer
+                                    }
                                 })
                         }
                         Packet::HandshakeResponse(p) => d.peers_by_idx.get(&(p.receiver_idx >> 8)),
@@ -702,7 +721,32 @@ impl<T: Tun, S: Sock> Device<T, S> {
                         break;
                     }
                 }
-                Action::Continue
+
+                match pre_peer {
+                    Some(pp) => {
+                        d.try_writeable(
+                            |device| device.trigger_yield(),
+                            |device| {
+                                device.cancel_yield();
+
+                                device.update_peer(pp.public_key.clone(), false, false, None, pp.allowed_ips.to_vec(), Some(pp.keepalive), None);
+
+                                for AllowedIP { addr, cidr } in &pp.allowed_ips {
+                                    match &device.config.peer_registry {
+                                        Some(pr) => {
+                                            // Add a route to the peer on the host
+                                            pr.add_route(&addr, &cidr);
+                                        },
+                                        None => {
+                                        }
+                                    };
+                                }
+                            }
+                        );
+                        Action::Continue
+                    }
+                    None => Action::Continue
+                }
             }),
         )?;
         Ok(())
