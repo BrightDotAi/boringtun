@@ -731,16 +731,19 @@ impl<T: Tun, S: Sock, P: PeerRegistry> Device<T, S, P> {
 
                                 device.update_peer(pp.public_key.clone(), false, false, None, pp.allowed_ips.to_vec(), Some(pp.keepalive), None);
 
-                                for AllowedIP { addr, cidr } in &pp.allowed_ips {
-                                    match &device.config.peer_registry {
-                                        Some(pr) => {
-                                            // Add a route to the peer on the host
+                                match &device.config.peer_registry {
+                                    Some(pr) => {
+                                        // Add routes for each AllowedIP on the host
+                                        for AllowedIP { addr, cidr } in &pp.allowed_ips {
                                             pr.add_route(&addr, &cidr);
-                                        },
-                                        None => {
                                         }
-                                    };
-                                }
+
+                                        // Update the peer
+                                        pr.update(pp.public_key.clone());
+                                    },
+                                    None => {
+                                    }
+                                };
                             }
                         );
                         Action::Continue

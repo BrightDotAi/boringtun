@@ -16,8 +16,8 @@ pub trait PeerRegistry: 'static + Send + Sync {
     // Add a route for the indicated IP and CIDR
     fn add_route(&self, ip: &IpAddr, cidr: &u8);
 
-    // Update a peer's IP in the registry
-    fn update_ip(&self, public_key: X25519PublicKey, ip: &IpAddr);
+    // Update a peer in the registry
+    fn update(&self, public_key: X25519PublicKey);
 }
 
 pub struct EmptyPeerRegistry {}
@@ -30,5 +30,5 @@ impl PeerRegistry for EmptyPeerRegistry {
 
     fn add_route(&self, _ip: &IpAddr, _cidr: &u8) {}
 
-    fn update_ip(&self, _public_key: X25519PublicKey, _ip: &IpAddr) {}
+    fn update(&self, _public_key: X25519PublicKey) {}
 }
