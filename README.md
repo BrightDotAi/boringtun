@@ -2,7 +2,12 @@
 
 # BoringTun
 
-[![crates.io](https://img.shields.io/crates/v/boringtun.svg)](https://crates.io/crates/boringtun)
+## Warning
+Boringtun is currently undergoing a restructuring. You should probably not rely on or link to 
+the master branch right now. Instead you should use the crates.io page.
+
+- boringtun: [![crates.io](https://img.shields.io/crates/v/boringtun.svg)](https://crates.io/crates/boringtun)
+- boringtun-cli [![crates.io](https://img.shields.io/crates/v/boringtun-cli.svg)](https://crates.io/crates/boringtun-cli)
 
 **BoringTun** is an implementation of the [WireGuard<sup>®</sup>](https://www.wireguard.com/) protocol designed for portability and speed.
 
@@ -10,7 +15,8 @@
 
 The project consists of two parts:
 
-* The executable `boringtun`, a [userspace WireGuard](https://www.wireguard.com/xplatform/) implementation for Linux and macOS.
+* The executable `boringtun-cli`, a [userspace WireGuard](https://www.wireguard.com/xplatform/) 
+  implementation for Linux and macOS.
 * The library `boringtun` that can be used to implement fast and efficient WireGuard client apps on various platforms, including iOS and Android. It implements the underlying WireGuard protocol, without the network or tunnel stacks, those can be implemented in a platform idiomatic way.
 
 ### Installation
@@ -18,13 +24,13 @@ The project consists of two parts:
 You can install this project using `cargo`:
 
 ```
-cargo install boringtun
+cargo install boringtun-cli
 ```
 
 ### Building
 
 - Library only: `cargo build --lib --no-default-features --release [--target $(TARGET_TRIPLE)]`
-- Executable: `cargo build --bin boringtun --release [--target $(TARGET_TRIPLE)]`
+- Executable: `cargo build --bin boringtun-cli --release [--target $(TARGET_TRIPLE)]`
 
 By default the executable is placed in the `./target/release` folder. You can copy it to a desired location manually, or install it using `cargo install --bin boringtun --path .`.
 
@@ -32,13 +38,13 @@ By default the executable is placed in the `./target/release` folder. You can co
 
 As per the specification, to start a tunnel use:
 
-`boringtun [-f/--foreground] INTERFACE-NAME`
+`boringtun-cli [-f/--foreground] INTERFACE-NAME`
 
 The tunnel can then be configured using [wg](https://git.zx2c4.com/WireGuard/about/src/tools/man/wg.8), as a regular WireGuard tunnel, or any other tool.
 
 It is also possible to use with [wg-quick](https://git.zx2c4.com/WireGuard/about/src/tools/man/wg-quick.8) by setting the environment variable `WG_QUICK_USERSPACE_IMPLEMENTATION` to `boringtun`. For example:
 
-`sudo WG_QUICK_USERSPACE_IMPLEMENTATION=boringtun WG_SUDO=1 wg-quick up CONFIGURATION`
+`sudo WG_QUICK_USERSPACE_IMPLEMENTATION=boringtun-cli WG_SUDO=1 wg-quick up CONFIGURATION`
 
 ### Testing
 
@@ -47,30 +53,20 @@ Testing this project has a few requirements:
 - `sudo`: required to create tunnels. When you run `cargo test` you'll be prompted for your password.
 - Docker: you can install it [here](https://www.docker.com/get-started). If you are on Ubuntu/Debian you can run `apt-get install docker.io`.
 
-### Benchmarking
-
-To benchmark this project you can run this command:
-
-```
-cargo +nightly bench
-```
-
-This command depends on the unstable `test` feature of the Rust compiler. As a result, you'll need to use the `nightly` channel of Rust when you run it.
-
 ## Supported platforms
 
-Target triple                 |Binary|Library|                 |
-------------------------------|:----:|:-----:|-----------------|
-x86_64-unknown-linux-gnu      |  ✓   |   ✓   |[![Build Status](https://dev.azure.com/cloudflare-ps/wireguard-cf/_apis/build/status/cloudflare.boringtun?branchName=master&jobName=Linux%20armv7)](https://dev.azure.com/cloudflare-ps/wireguard-cf/_build/latest?definitionId=4&branchName=master)
-aarch64-unknown-linux-gnu     |  ✓   |   ✓   |[![Build Status](https://dev.azure.com/cloudflare-ps/wireguard-cf/_apis/build/status/cloudflare.boringtun?branchName=master&jobName=Linux%20aarch64)](https://dev.azure.com/cloudflare-ps/wireguard-cf/_build/latest?definitionId=4&branchName=master)
-armv7-unknown-linux-gnueabihf |  ✓   |   ✓   |[![Build Status](https://dev.azure.com/cloudflare-ps/wireguard-cf/_apis/build/status/cloudflare.boringtun?branchName=master&jobName=Linux%20armv7)](https://dev.azure.com/cloudflare-ps/wireguard-cf/_build/latest?definitionId=4&branchName=master)
-x86_64-apple-darwin           |  ✓   |   ✓   |[![Build Status](https://dev.azure.com/cloudflare-ps/wireguard-cf/_apis/build/status/cloudflare.boringtun?branchName=master&jobName=macOS)](https://dev.azure.com/cloudflare-ps/wireguard-cf/_build/latest?definitionId=4&branchName=master)
-x86_64-pc-windows-msvc        |      |   ✓   |[![Build Status](https://dev.azure.com/cloudflare-ps/wireguard-cf/_apis/build/status/cloudflare.boringtun?branchName=master&jobName=Windows)](https://dev.azure.com/cloudflare-ps/wireguard-cf/_build/latest?definitionId=4&branchName=master)
-aarch64-apple-ios             |      |   ✓   |FFI bindings
-armv7-apple-ios               |      |   ✓   |FFI bindings
-armv7s-apple-ios              |      |   ✓   |FFI bindings
-aarch64-linux-android         |      |   ✓   |JNI bindings
-arm-linux-androideabi         |      |   ✓   |JNI bindings
+Target triple                 |Binary|Library|
+------------------------------|:----:|------|
+x86_64-unknown-linux-gnu      |  ✓   | ✓    |
+aarch64-unknown-linux-gnu     |  ✓   | ✓    |
+armv7-unknown-linux-gnueabihf |  ✓   | ✓    |
+x86_64-apple-darwin           |  ✓   | ✓    |
+x86_64-pc-windows-msvc        |      | ✓    |
+aarch64-apple-ios             |      | ✓    |
+armv7-apple-ios               |      | ✓    |
+armv7s-apple-ios              |      | ✓    |
+aarch64-linux-android         |      | ✓    |
+arm-linux-androideabi         |      | ✓    |
 
 <sub>Other platforms may be added in the future</sub>
 
