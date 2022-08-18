@@ -284,7 +284,7 @@ fn api_set_peer<P: PeerRegistry>(
     let mut replace_ips = false;
     let mut endpoint = None;
     let mut keepalive = None;
-    let mut public_key = pub_key;
+    let public_key = pub_key;
     let mut preshared_key = None;
     let mut allowed_ips: Vec<AllowedIP> = vec![];
     while reader.read_line(&mut cmd).is_ok() {

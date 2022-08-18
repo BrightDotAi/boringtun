@@ -637,7 +637,7 @@ impl<P: PeerRegistry> Device<P> {
                                     let pub_key =
                                         x25519_dalek::PublicKey::from(hh.peer_static_public);
                                     let peer = d.peers.get(&pub_key);
-                                    return if peer.is_none() {
+                                    if peer.is_none() {
                                         match &d.config.peer_registry {
                                             Some(pr) => {
                                                 // Look for a peer in the registry
@@ -648,7 +648,7 @@ impl<P: PeerRegistry> Device<P> {
                                         None
                                     } else {
                                         peer
-                                    };
+                                    }
                                 })
                         }
                         Packet::HandshakeResponse(p) => d.peers_by_idx.get(&(p.receiver_idx >> 8)),
@@ -718,7 +718,7 @@ impl<P: PeerRegistry> Device<P> {
                                 device.cancel_yield();
 
                                 device.update_peer(
-                                    pp.public_key.clone(),
+                                    pp.public_key,
                                     false,
                                     false,
                                     None,
@@ -731,11 +731,11 @@ impl<P: PeerRegistry> Device<P> {
                                     Some(pr) => {
                                         // Add routes for each AllowedIP on the host
                                         for AllowedIP { addr, cidr } in &pp.allowed_ips {
-                                            pr.add_route(&addr, &cidr);
+                                            pr.add_route(addr, cidr);
                                         }
 
                                         // Update the peer
-                                        pr.update(pp.public_key.clone());
+                                        pr.update(pp.public_key);
                                     }
                                     None => {}
                                 };
