@@ -1,11 +1,11 @@
-use std::net::IpAddr;
 use crate::device::peer::AllowedIP;
+use std::net::IpAddr;
 
 // A Peer that is not yet a Peer
 pub struct PrePeer {
     pub public_key: x25519_dalek::PublicKey,
     pub allowed_ips: Vec<AllowedIP>,
-    pub keepalive: u16
+    pub keepalive: u16,
 }
 
 pub trait PeerRegistry: 'static + Send + Sync {

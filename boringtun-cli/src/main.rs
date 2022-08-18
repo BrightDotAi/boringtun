@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 use boringtun::device::drop_privileges::drop_privileges;
+use boringtun::device::peer_registry::EmptyPeerRegistry;
 use boringtun::device::{DeviceConfig, DeviceHandle};
 use clap::{Arg, Command};
 use daemonize::Daemonize;
@@ -9,7 +10,6 @@ use std::fs::File;
 use std::os::unix::net::UnixDatagram;
 use std::process::exit;
 use tracing::Level;
-use boringtun::device::peer_registry::EmptyPeerRegistry;
 
 fn check_tun_name(_v: String) -> Result<(), String> {
     #[cfg(any(target_os = "macos", target_os = "ios"))]
@@ -155,15 +155,16 @@ fn main() {
         use_multi_queue: !matches.is_present("disable-multi-queue"),
     };
 
-    let mut device_handle: DeviceHandle<EmptyPeerRegistry> = match DeviceHandle::new(tun_name, config) {
-        Ok(d) => d,
-        Err(e) => {
-            // Notify parent that tunnel initialization failed
-            tracing::error!(message = "Failed to initialize tunnel", error=?e);
-            sock1.send(&[0]).unwrap();
-            exit(1);
-        }
-    };
+    let mut device_handle: DeviceHandle<EmptyPeerRegistry> =
+        match DeviceHandle::new(tun_name, config) {
+            Ok(d) => d,
+            Err(e) => {
+                // Notify parent that tunnel initialization failed
+                tracing::error!(message = "Failed to initialize tunnel", error=?e);
+                sock1.send(&[0]).unwrap();
+                exit(1);
+            }
+        };
 
     if !matches.is_present("disable-drop-privileges") {
         if let Err(e) = drop_privileges() {

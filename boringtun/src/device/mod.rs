@@ -88,7 +88,7 @@ enum Action {
 
 // Event handler function
 type Handler<P> =
-Box<dyn Fn(&mut LockReadGuard<Device<P>>, &mut ThreadData) -> Action + Send + Sync>;
+    Box<dyn Fn(&mut LockReadGuard<Device<P>>, &mut ThreadData) -> Action + Send + Sync>;
 
 pub struct DeviceHandle<P: PeerRegistry> {
     device: Arc<Lock<Device<P>>>, // The interface this handle owns
@@ -96,7 +96,10 @@ pub struct DeviceHandle<P: PeerRegistry> {
 }
 
 //#[derive(Debug, Clone, Copy)]
-pub struct DeviceConfig<P> where P: PeerRegistry {
+pub struct DeviceConfig<P>
+where
+    P: PeerRegistry,
+{
     pub n_threads: usize,
     pub use_connected_socket: bool,
     pub peer_registry: Option<P>,
@@ -106,7 +109,10 @@ pub struct DeviceConfig<P> where P: PeerRegistry {
     pub uapi_fd: i32,
 }
 
-impl<P> Default for DeviceConfig<P> where P: PeerRegistry {
+impl<P> Default for DeviceConfig<P>
+where
+    P: PeerRegistry,
+{
     fn default() -> Self {
         DeviceConfig {
             n_threads: 4,
@@ -157,8 +163,7 @@ struct ThreadData {
     dst_buf: [u8; MAX_UDP_SIZE],
 }
 
-
-impl<P: PeerRegistry> DeviceHandle<P>  {
+impl<P: PeerRegistry> DeviceHandle<P> {
     pub fn new(name: &str, config: DeviceConfig<P>) -> Result<DeviceHandle<P>, Error> {
         let n_threads = config.n_threads;
         let mut wg_interface = Device::<P>::new(name, config)?;
@@ -629,21 +634,21 @@ impl<P: PeerRegistry> Device<P> {
                             parse_handshake_anon(private_key, public_key, p)
                                 .ok()
                                 .and_then(|hh| {
-
-                                    let pub_key = x25519_dalek::PublicKey::from(hh.peer_static_public);
+                                    let pub_key =
+                                        x25519_dalek::PublicKey::from(hh.peer_static_public);
                                     let peer = d.peers.get(&pub_key);
                                     return if peer.is_none() {
                                         match &d.config.peer_registry {
                                             Some(pr) => {
                                                 // Look for a peer in the registry
                                                 pre_peer = pr.get(pub_key);
-                                            },
+                                            }
                                             None => {}
                                         };
                                         None
                                     } else {
                                         peer
-                                    }
+                                    };
                                 })
                         }
                         Packet::HandshakeResponse(p) => d.peers_by_idx.get(&(p.receiver_idx >> 8)),
@@ -712,7 +717,15 @@ impl<P: PeerRegistry> Device<P> {
                             |device| {
                                 device.cancel_yield();
 
-                                device.update_peer(pp.public_key.clone(), false, false, None, pp.allowed_ips.as_slice(), Some(pp.keepalive), None);
+                                device.update_peer(
+                                    pp.public_key.clone(),
+                                    false,
+                                    false,
+                                    None,
+                                    pp.allowed_ips.as_slice(),
+                                    Some(pp.keepalive),
+                                    None,
+                                );
 
                                 match &device.config.peer_registry {
                                     Some(pr) => {
@@ -723,15 +736,14 @@ impl<P: PeerRegistry> Device<P> {
 
                                         // Update the peer
                                         pr.update(pp.public_key.clone());
-                                    },
-                                    None => {
                                     }
+                                    None => {}
                                 };
-                            }
+                            },
                         );
                         Action::Continue
                     }
-                    None => Action::Continue
+                    None => Action::Continue,
                 }
             }),
         )?;

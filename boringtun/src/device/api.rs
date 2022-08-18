@@ -3,6 +3,7 @@
 
 use super::dev_lock::LockReadGuard;
 use super::drop_privileges::get_saved_ids;
+use super::peer_registry::PeerRegistry;
 use super::{AllowedIP, Device, Error, SocketAddr};
 use crate::device::Action;
 use crate::serialization::KeyBytes;
@@ -13,7 +14,6 @@ use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::os::unix::io::{AsRawFd, FromRawFd};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::sync::atomic::Ordering;
-use super::peer_registry::PeerRegistry;
 
 const SOCK_DIR: &str = "/var/run/wireguard/";
 
@@ -34,8 +34,7 @@ fn create_sock_dir() {
     }
 }
 
-
-impl<P: PeerRegistry>  Device<P> {
+impl<P: PeerRegistry> Device<P> {
     /// Register the api handler for this Device. The api handler receives stream connections on a Unix socket
     /// with a known path: /var/run/wireguard/{tun_name}.sock.
     pub fn register_api_handler(&mut self) -> Result<(), Error> {
