@@ -2,9 +2,9 @@ name: PR Status Checks
 
 on:
   push:
-    branches: [ "master" ]
+    branches: [ "master", "peer-registry" ]
   pull_request:
-    branches: [ "master" ]
+    branches: [ "master", "peer-registry" ]
 
 jobs:
   # Depends on all actions that are required for a "successful" CI run.
