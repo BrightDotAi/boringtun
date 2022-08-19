@@ -5,6 +5,7 @@
 // Those tests require docker and sudo privileges to run
 #[cfg(all(test, not(target_os = "macos")))]
 mod tests {
+    use crate::device::peer_registry::EmptyPeerRegistry;
     use crate::device::{DeviceConfig, DeviceHandle};
     use base64::encode as base64encode;
     use hex::encode;
@@ -58,7 +59,7 @@ mod tests {
 
     /// Represents a single WireGuard interface on local machine
     struct WGHandle {
-        _device: DeviceHandle,
+        _device: DeviceHandle<EmptyPeerRegistry>,
         name: String,
         addr_v4: IpAddr,
         addr_v6: IpAddr,
@@ -266,6 +267,7 @@ mod tests {
                 DeviceConfig {
                     n_threads: 2,
                     use_connected_socket: true,
+                    peer_registry: None,
                     #[cfg(target_os = "linux")]
                     use_multi_queue: true,
                     #[cfg(target_os = "linux")]
@@ -275,7 +277,11 @@ mod tests {
         }
 
         /// Create a new interface for the tunnel with the given address
-        fn init_with_config(addr_v4: IpAddr, addr_v6: IpAddr, config: DeviceConfig) -> WGHandle {
+        fn init_with_config(
+            addr_v4: IpAddr,
+            addr_v6: IpAddr,
+            config: DeviceConfig<EmptyPeerRegistry>,
+        ) -> WGHandle {
             // Generate a new name, utun100+ should work on macOS and Linux
             let name = format!("utun{}", NEXT_IFACE_IDX.fetch_add(1, Ordering::Relaxed));
             let _device = DeviceHandle::new(&name, config).unwrap();
@@ -558,6 +564,7 @@ mod tests {
             DeviceConfig {
                 n_threads: 2,
                 use_connected_socket: false,
+                peer_registry: None,
                 #[cfg(target_os = "linux")]
                 use_multi_queue: true,
                 #[cfg(target_os = "linux")]
@@ -716,6 +723,7 @@ mod tests {
             DeviceConfig {
                 n_threads: 2,
                 use_connected_socket: false,
+                peer_registry: None,
                 #[cfg(target_os = "linux")]
                 use_multi_queue: true,
                 #[cfg(target_os = "linux")]
