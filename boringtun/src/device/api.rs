@@ -4,7 +4,7 @@
 use super::dev_lock::LockReadGuard;
 use super::drop_privileges::get_saved_ids;
 use super::{AllowedIP, Device, Error, SocketAddr};
-use crate::device::registry::Registry;
+use crate::device::service::PeerService;
 use crate::device::Action;
 use crate::serialization::KeyBytes;
 use hex::encode as encode_hex;
@@ -34,7 +34,7 @@ fn create_sock_dir() {
     }
 }
 
-impl<R: Registry + Send + Sync + 'static> Device<R> {
+impl<R: PeerService + Send + Sync + 'static> Device<R> {
     /// Register the api handler for this Device. The api handler receives stream connections on a Unix socket
     /// with a known path: /var/run/wireguard/{tun_name}.sock.
     pub fn register_api_handler(&mut self) -> Result<(), Error> {
@@ -154,7 +154,7 @@ impl<R: Registry + Send + Sync + 'static> Device<R> {
 }
 
 #[allow(unused_must_use)]
-fn api_get<R: Registry + Send + Sync + 'static>(
+fn api_get<R: PeerService + Send + Sync + 'static>(
     writer: &mut BufWriter<&UnixStream>,
     d: &Device<R>,
 ) -> i32 {
@@ -204,7 +204,7 @@ fn api_get<R: Registry + Send + Sync + 'static>(
     0
 }
 
-fn api_set<R: Registry + Send + Sync + 'static>(
+fn api_set<R: PeerService + Send + Sync + 'static>(
     reader: &mut BufReader<&UnixStream>,
     d: &mut LockReadGuard<Device<R>>,
 ) -> i32 {
@@ -277,7 +277,7 @@ fn api_set<R: Registry + Send + Sync + 'static>(
     .unwrap_or(EIO)
 }
 
-fn api_set_peer<R: Registry + Send + Sync + 'static>(
+fn api_set_peer<R: PeerService + Send + Sync + 'static>(
     reader: &mut BufReader<&UnixStream>,
     d: &mut Device<R>,
     pub_key: x25519_dalek::PublicKey,

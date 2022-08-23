@@ -1,7 +1,7 @@
 use crate::device::peer::AllowedIP;
 
-pub trait Registry {
-    /// Returns a new peer candidate as defined by the implementing registry
+pub trait PeerService {
+    /// Returns a new peer candidate as defined by the implementing service
     fn new_candidate(&self, _public_key: &x25519_dalek::PublicKey) -> Option<PeerCandidate> {
         None
     }
@@ -19,6 +19,6 @@ pub struct PeerCandidate {
 }
 
 #[derive(Default)]
-pub struct NopRegistry;
+pub struct NopService;
 
-impl Registry for NopRegistry {}
+impl PeerService for NopService {}

@@ -8,7 +8,7 @@ pub mod drop_privileges;
 #[cfg(test)]
 mod integration_tests;
 pub mod peer;
-pub mod registry;
+pub mod service;
 
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 #[path = "kqueue.rs"]
@@ -50,7 +50,7 @@ use poll::{EventPoll, EventRef, WaitResult};
 use tun::{errno, errno_str, TunSocket};
 use udp::UDPSocket;
 
-use crate::device::registry::Registry;
+use crate::device::service::PeerService;
 use dev_lock::{Lock, LockReadGuard};
 
 const HANDSHAKE_RATE_LIMIT: u64 = 100; // The number of handshakes per second we can tolerate before using cookies
@@ -90,28 +90,28 @@ enum Action {
 type Handler<R> =
     Box<dyn Fn(&mut LockReadGuard<Device<R>>, &mut ThreadData) -> Action + Send + Sync>;
 
-pub struct DeviceHandle<R: Registry + Send + Sync + 'static> {
+pub struct DeviceHandle<R: PeerService + Send + Sync + 'static> {
     device: Arc<Lock<Device<R>>>, // The interface this handle owns
     threads: Vec<JoinHandle<()>>,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct DeviceConfig<R: Registry + Send + Sync + 'static> {
+pub struct DeviceConfig<R: PeerService + Send + Sync + 'static> {
     pub n_threads: usize,
     pub use_connected_socket: bool,
-    pub registry: Option<R>,
+    pub service: Option<R>,
     #[cfg(target_os = "linux")]
     pub use_multi_queue: bool,
     #[cfg(target_os = "linux")]
     pub uapi_fd: i32,
 }
 
-impl<R: Registry + Send + Sync + 'static> Default for DeviceConfig<R> {
+impl<R: PeerService + Send + Sync + 'static> Default for DeviceConfig<R> {
     fn default() -> Self {
         DeviceConfig {
             n_threads: 4,
             use_connected_socket: true,
-            registry: None,
+            service: None,
             #[cfg(target_os = "linux")]
             use_multi_queue: true,
             #[cfg(target_os = "linux")]
@@ -120,7 +120,7 @@ impl<R: Registry + Send + Sync + 'static> Default for DeviceConfig<R> {
     }
 }
 
-pub struct Device<R: Registry + Send + Sync + 'static> {
+pub struct Device<R: PeerService + Send + Sync + 'static> {
     key_pair: Option<(x25519_dalek::StaticSecret, x25519_dalek::PublicKey)>,
     queue: Arc<EventPoll<Handler<R>>>,
 
@@ -157,7 +157,7 @@ struct ThreadData {
     dst_buf: [u8; MAX_UDP_SIZE],
 }
 
-impl<R: Registry + Send + Sync + 'static> DeviceHandle<R> {
+impl<R: PeerService + Send + Sync + 'static> DeviceHandle<R> {
     pub fn new(name: &str, config: DeviceConfig<R>) -> Result<DeviceHandle<R>, Error> {
         let n_threads = config.n_threads;
         let mut wg_interface = Device::new(name, config)?;
@@ -263,14 +263,14 @@ impl<R: Registry + Send + Sync + 'static> DeviceHandle<R> {
     }
 }
 
-impl<R: Registry + Send + Sync + 'static> Drop for DeviceHandle<R> {
+impl<R: PeerService + Send + Sync + 'static> Drop for DeviceHandle<R> {
     fn drop(&mut self) {
         self.device.read().trigger_exit();
         self.clean();
     }
 }
 
-impl<R: Registry + Send + Sync + 'static> Device<R> {
+impl<R: PeerService + Send + Sync + 'static> Device<R> {
     fn next_index(&mut self) -> u32 {
         let next_index = self.next_index;
         self.next_index += 1;
@@ -636,8 +636,8 @@ impl<R: Registry + Send + Sync + 'static> Device<R> {
 
                                     let peer = d.peers.get(&pub_key);
                                     if peer.is_none() {
-                                        d.config.registry.iter().for_each(|registry| {
-                                            peer_candidate = registry.new_candidate(&pub_key);
+                                        d.config.service.iter().for_each(|service| {
+                                            peer_candidate = service.new_candidate(&pub_key);
                                         })
                                     }
                                     peer
@@ -721,8 +721,8 @@ impl<R: Registry + Send + Sync + 'static> Device<R> {
                                 None,
                             );
 
-                            if let Some(registry) = &device.config.registry {
-                                registry.register_candidate(peer_candidate);
+                            if let Some(service) = &device.config.service {
+                                service.register_candidate(peer_candidate);
                             }
                         },
                     );

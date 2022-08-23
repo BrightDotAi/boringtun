@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 use boringtun::device::drop_privileges::drop_privileges;
-use boringtun::device::registry::NopRegistry;
+use boringtun::device::service::NopService;
 use boringtun::device::{DeviceConfig, DeviceHandle};
 use clap::{Arg, Command};
 use daemonize::Daemonize;
@@ -152,10 +152,10 @@ fn main() {
         use_connected_socket: !matches.is_present("disable-connected-udp"),
         #[cfg(target_os = "linux")]
         use_multi_queue: !matches.is_present("disable-multi-queue"),
-        registry: None,
+        service: None,
     };
 
-    let mut device_handle = match DeviceHandle::<NopRegistry>::new(tun_name, config) {
+    let mut device_handle = match DeviceHandle::<NopService>::new(tun_name, config) {
         Ok(d) => d,
         Err(e) => {
             // Notify parent that tunnel initialization failed

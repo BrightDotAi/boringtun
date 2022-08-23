@@ -5,7 +5,7 @@
 // Those tests require docker and sudo privileges to run
 #[cfg(all(test, not(target_os = "macos")))]
 mod tests {
-    use crate::device::registry::NopRegistry;
+    use crate::device::service::NopService;
     use crate::device::{DeviceConfig, DeviceHandle};
     use base64::encode as base64encode;
     use hex::encode;
@@ -59,7 +59,7 @@ mod tests {
 
     /// Represents a single WireGuard interface on local machine
     struct WGHandle {
-        _device: DeviceHandle<NopRegistry>,
+        _device: DeviceHandle<NopService>,
         name: String,
         addr_v4: IpAddr,
         addr_v6: IpAddr,
@@ -271,7 +271,7 @@ mod tests {
                     use_multi_queue: true,
                     #[cfg(target_os = "linux")]
                     uapi_fd: -1,
-                    registry: None,
+                    service: None,
                 },
             )
         }
@@ -280,7 +280,7 @@ mod tests {
         fn init_with_config(
             addr_v4: IpAddr,
             addr_v6: IpAddr,
-            config: DeviceConfig<NopRegistry>,
+            config: DeviceConfig<NopService>,
         ) -> WGHandle {
             // Generate a new name, utun100+ should work on macOS and Linux
             let name = format!("utun{}", NEXT_IFACE_IDX.fetch_add(1, Ordering::Relaxed));
@@ -568,7 +568,7 @@ mod tests {
                 use_multi_queue: true,
                 #[cfg(target_os = "linux")]
                 uapi_fd: -1,
-                registry: None,
+                service: None,
             },
         );
 
@@ -727,7 +727,7 @@ mod tests {
                 use_multi_queue: true,
                 #[cfg(target_os = "linux")]
                 uapi_fd: -1,
-                registry: None,
+                service: None,
             },
         );
 
