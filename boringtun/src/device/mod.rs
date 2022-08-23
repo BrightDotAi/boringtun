@@ -8,6 +8,7 @@ pub mod drop_privileges;
 #[cfg(test)]
 mod integration_tests;
 pub mod peer;
+pub mod registry;
 
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 #[path = "kqueue.rs"]
@@ -49,6 +50,7 @@ use poll::{EventPoll, EventRef, WaitResult};
 use tun::{errno, errno_str, TunSocket};
 use udp::UDPSocket;
 
+use crate::device::registry::Registry;
 use dev_lock::{Lock, LockReadGuard};
 
 const HANDSHAKE_RATE_LIMIT: u64 = 100; // The number of handshakes per second we can tolerate before using cookies
@@ -85,28 +87,31 @@ enum Action {
 }
 
 // Event handler function
-type Handler = Box<dyn Fn(&mut LockReadGuard<Device>, &mut ThreadData) -> Action + Send + Sync>;
+type Handler<R> =
+    Box<dyn Fn(&mut LockReadGuard<Device<R>>, &mut ThreadData) -> Action + Send + Sync>;
 
-pub struct DeviceHandle {
-    device: Arc<Lock<Device>>, // The interface this handle owns
+pub struct DeviceHandle<R: Registry + Send + Sync + 'static> {
+    device: Arc<Lock<Device<R>>>, // The interface this handle owns
     threads: Vec<JoinHandle<()>>,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct DeviceConfig {
+pub struct DeviceConfig<R: Registry + Send + Sync + 'static> {
     pub n_threads: usize,
     pub use_connected_socket: bool,
+    pub registry: Option<R>,
     #[cfg(target_os = "linux")]
     pub use_multi_queue: bool,
     #[cfg(target_os = "linux")]
     pub uapi_fd: i32,
 }
 
-impl Default for DeviceConfig {
+impl<R: Registry + Send + Sync + 'static> Default for DeviceConfig<R> {
     fn default() -> Self {
         DeviceConfig {
             n_threads: 4,
             use_connected_socket: true,
+            registry: None,
             #[cfg(target_os = "linux")]
             use_multi_queue: true,
             #[cfg(target_os = "linux")]
@@ -115,9 +120,9 @@ impl Default for DeviceConfig {
     }
 }
 
-pub struct Device {
+pub struct Device<R: Registry + Send + Sync + 'static> {
     key_pair: Option<(x25519_dalek::StaticSecret, x25519_dalek::PublicKey)>,
-    queue: Arc<EventPoll<Handler>>,
+    queue: Arc<EventPoll<Handler<R>>>,
 
     listen_port: u16,
     fwmark: Option<u32>,
@@ -134,7 +139,7 @@ pub struct Device {
     peers_by_idx: HashMap<u32, Arc<Mutex<Peer>>>,
     next_index: u32,
 
-    config: DeviceConfig,
+    config: DeviceConfig<R>,
 
     cleanup_paths: Vec<String>,
 
@@ -152,8 +157,8 @@ struct ThreadData {
     dst_buf: [u8; MAX_UDP_SIZE],
 }
 
-impl DeviceHandle {
-    pub fn new(name: &str, config: DeviceConfig) -> Result<DeviceHandle, Error> {
+impl<R: Registry + Send + Sync + 'static> DeviceHandle<R> {
+    pub fn new(name: &str, config: DeviceConfig<R>) -> Result<DeviceHandle<R>, Error> {
         let n_threads = config.n_threads;
         let mut wg_interface = Device::new(name, config)?;
         wg_interface.open_listen_socket(0)?; // Start listening on a random port
@@ -188,7 +193,7 @@ impl DeviceHandle {
         }
     }
 
-    fn event_loop(_i: usize, device: &Lock<Device>) {
+    fn event_loop(_i: usize, device: &Lock<Device<R>>) {
         #[cfg(target_os = "linux")]
         let mut thread_local = ThreadData {
             src_buf: [0u8; MAX_UDP_SIZE],
@@ -258,14 +263,14 @@ impl DeviceHandle {
     }
 }
 
-impl Drop for DeviceHandle {
+impl<R: Registry + Send + Sync + 'static> Drop for DeviceHandle<R> {
     fn drop(&mut self) {
         self.device.read().trigger_exit();
         self.clean();
     }
 }
 
-impl Device {
+impl<R: Registry + Send + Sync + 'static> Device<R> {
     fn next_index(&mut self) -> u32 {
         let next_index = self.next_index;
         self.next_index += 1;
@@ -340,8 +345,8 @@ impl Device {
         tracing::info!("Peer added");
     }
 
-    pub fn new(name: &str, config: DeviceConfig) -> Result<Device, Error> {
-        let poll = EventPoll::<Handler>::new()?;
+    pub fn new(name: &str, config: DeviceConfig<R>) -> Result<Device<R>, Error> {
+        let poll = EventPoll::<Handler<R>>::new()?;
 
         // Create a tunnel device
         let iface = Arc::new(TunSocket::new(name)?.set_non_blocking()?);
@@ -600,6 +605,8 @@ impl Device {
         self.queue.new_event(
             udp.as_raw_fd(),
             Box::new(move |d, t| {
+                let mut peer_candidate = None;
+
                 // Handler that handles anonymous packets over UDP
                 let mut iter = MAX_ITR;
                 let (private_key, public_key) = d.key_pair.as_ref().expect("Key not set");
@@ -624,8 +631,16 @@ impl Device {
                             parse_handshake_anon(private_key, public_key, p)
                                 .ok()
                                 .and_then(|hh| {
-                                    d.peers
-                                        .get(&x25519_dalek::PublicKey::from(hh.peer_static_public))
+                                    let pub_key =
+                                        x25519_dalek::PublicKey::from(hh.peer_static_public);
+
+                                    let peer = d.peers.get(&pub_key);
+                                    if peer.is_none() {
+                                        d.config.registry.iter().for_each(|registry| {
+                                            peer_candidate = registry.new_candidate(&pub_key);
+                                        })
+                                    }
+                                    peer
                                 })
                         }
                         Packet::HandshakeResponse(p) => d.peers_by_idx.get(&(p.receiver_idx >> 8)),
@@ -687,6 +702,30 @@ impl Device {
                     if iter == 0 {
                         break;
                     }
+                }
+
+                if let Some(peer_candidate) = peer_candidate {
+                    d.try_writeable(
+                        |device| device.trigger_yield(),
+                        |device| {
+                            device.cancel_yield();
+
+                            // Add the peer candidate to the device
+                            device.update_peer(
+                                peer_candidate.public_key.clone(),
+                                false,
+                                false,
+                                None,
+                                peer_candidate.allowed_ips.as_slice(),
+                                Some(peer_candidate.keepalive),
+                                None,
+                            );
+
+                            if let Some(registry) = &device.config.registry {
+                                registry.register_candidate(peer_candidate);
+                            }
+                        },
+                    );
                 }
                 Action::Continue
             }),
