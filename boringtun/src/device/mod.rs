@@ -637,7 +637,9 @@ impl<R: PeerService + Send + Sync + 'static> Device<R> {
                                     let peer = d.peers.get(&pub_key);
                                     if peer.is_none() {
                                         d.config.service.iter().for_each(|service| {
-                                            peer_candidate = service.new_candidate(&pub_key);
+                                            peer_candidate = futures::executor::block_on(
+                                                service.new_candidate(&pub_key),
+                                            );
                                         })
                                     }
                                     peer
@@ -722,7 +724,9 @@ impl<R: PeerService + Send + Sync + 'static> Device<R> {
                             );
 
                             if let Some(service) = &device.config.service {
-                                service.register_candidate(peer_candidate);
+                                futures::executor::block_on(
+                                    service.register_candidate(peer_candidate),
+                                );
                             }
                         },
                     );

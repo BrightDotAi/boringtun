@@ -1,13 +1,15 @@
 use crate::device::peer::AllowedIP;
+use async_trait::async_trait;
 
+#[async_trait]
 pub trait PeerService {
     /// Returns a new peer candidate as defined by the implementing service
-    fn new_candidate(&self, _public_key: &x25519_dalek::PublicKey) -> Option<PeerCandidate> {
+    async fn new_candidate(&self, _public_key: &x25519_dalek::PublicKey) -> Option<PeerCandidate> {
         None
     }
 
     /// Register the candidate typically resulting in the candidate becoming a full peer.
-    fn register_candidate(&self, _candidate: PeerCandidate) {
+    async fn register_candidate(&self, _candidate: PeerCandidate) {
         unimplemented!()
     }
 }
