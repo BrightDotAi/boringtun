@@ -2,9 +2,10 @@ use crate::device::allowed_ips::AllowedIps;
 use crate::device::peer::{AllowedIP, Peer};
 use parking_lot::Mutex;
 use rand_core::{OsRng, RngCore};
-use std::collections::hash_map::{Iter, IterMut};
 use std::collections::HashMap;
+use std::net::IpAddr;
 use std::sync::Arc;
+use x25519_dalek::PublicKey;
 
 /// Representation of a Peer registry.
 pub trait Registry: Send + Sync + 'static {
@@ -19,18 +20,14 @@ pub trait Registry: Send + Sync + 'static {
     /// Get a registry peer by its public key
     fn get(&mut self, public_key: &x25519_dalek::PublicKey) -> RegistryPeer;
 
-    /// Get the trie of IP/cidr addresses with the associated peer
-    fn get_by_allowed_ip(&self) -> &AllowedIps<Arc<Mutex<Peer>>>;
+    fn get_by_addr(&self, addr: IpAddr) -> Option<Arc<Mutex<Peer>>>;
 
     /// Get the peer at a given index
     fn get_peer_at(&self, idx: u32) -> Option<Arc<Mutex<Peer>>>;
 
-    /// An iterator visiting all the key-value peer pairings in arbitrary order.
-    fn iter(&self) -> Iter<x25519_dalek::PublicKey, Arc<Mutex<Peer>>>;
+    fn get_peers(&self) -> Vec<Arc<Mutex<Peer>>>;
 
-    /// An iterator visiting all the key-value peer pairings in arbitrary order, with mutable
-    /// references to the peers.
-    fn iter_mut(&mut self) -> IterMut<x25519_dalek::PublicKey, Arc<Mutex<Peer>>>;
+    fn get_peer_map(&self) -> HashMap<x25519_dalek::PublicKey, Arc<Mutex<Peer>>>;
 
     /// Removes a registered peer by its public key
     fn remove(&mut self, public_key: &x25519_dalek::PublicKey) -> Option<Arc<Mutex<Peer>>>;
@@ -110,20 +107,20 @@ impl Registry for InMemoryRegistry {
             .unwrap_or(RegistryPeer::None)
     }
 
-    fn get_by_allowed_ip(&self) -> &AllowedIps<Arc<Mutex<Peer>>> {
-        &self.peers_by_ip
+    fn get_by_addr(&self, addr: IpAddr) -> Option<Arc<Mutex<Peer>>> {
+        self.peers_by_ip.find(addr).cloned()
     }
 
     fn get_peer_at(&self, idx: u32) -> Option<Arc<Mutex<Peer>>> {
         self.peers_by_idx.get(&idx).cloned()
     }
 
-    fn iter(&self) -> Iter<x25519_dalek::PublicKey, Arc<Mutex<Peer>>> {
-        self.peers.iter()
+    fn get_peer_map(&self) -> HashMap<x25519_dalek::PublicKey, Arc<Mutex<Peer>>> {
+        self.peers.clone()
     }
 
-    fn iter_mut(&mut self) -> IterMut<x25519_dalek::PublicKey, Arc<Mutex<Peer>>> {
-        self.peers.iter_mut()
+    fn get_peers(&self) -> Vec<Arc<Mutex<Peer>>> {
+        self.peers.values().cloned().collect()
     }
 
     fn remove(&mut self, public_key: &x25519_dalek::PublicKey) -> Option<Arc<Mutex<Peer>>> {
@@ -161,19 +158,19 @@ impl Registry for () {
         unimplemented!();
     }
 
-    fn get_by_allowed_ip(&self) -> &AllowedIps<Arc<Mutex<Peer>>> {
-        unimplemented!();
+    fn get_by_addr(&self, _: IpAddr) -> Option<Arc<Mutex<Peer>>> {
+        unimplemented!()
     }
 
     fn get_peer_at(&self, _: u32) -> Option<Arc<Mutex<Peer>>> {
         unimplemented!();
     }
 
-    fn iter(&self) -> Iter<x25519_dalek::PublicKey, Arc<Mutex<Peer>>> {
+    fn get_peers(&self) -> Vec<Arc<Mutex<Peer>>> {
         unimplemented!();
     }
 
-    fn iter_mut(&mut self) -> IterMut<x25519_dalek::PublicKey, Arc<Mutex<Peer>>> {
+    fn get_peer_map(&self) -> HashMap<PublicKey, Arc<Mutex<Peer>>> {
         unimplemented!();
     }
 

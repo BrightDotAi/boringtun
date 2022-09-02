@@ -168,7 +168,7 @@ fn api_get<R: Registry>(writer: &mut BufWriter<&UnixStream>, d: &Device<R>) -> i
         writeln!(writer, "fwmark={}", fwmark);
     }
 
-    for (k, p) in d.registry.iter() {
+    for (k, p) in d.registry.get_peer_map() {
         let p = p.lock();
         writeln!(writer, "public_key={}", encode_hex(k.as_bytes()));
 

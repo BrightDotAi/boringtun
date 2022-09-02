@@ -428,7 +428,7 @@ impl<R: Registry> Device<R> {
             unsafe { self.queue.clear_event_by_fd(s.as_raw_fd()) };
         }
 
-        for (_, peer) in self.registry.iter() {
+        for peer in self.registry.get_peers() {
             peer.lock().shutdown_endpoint();
         }
 
@@ -476,7 +476,7 @@ impl<R: Registry> Device<R> {
 
         let rate_limiter = Arc::new(RateLimiter::new(&public_key, HANDSHAKE_RATE_LIMIT));
 
-        for (_, peer) in self.registry.iter_mut() {
+        for peer in self.registry.get_peers().iter_mut() {
             let mut peer_mut = peer.lock();
 
             if peer_mut
@@ -516,7 +516,7 @@ impl<R: Registry> Device<R> {
         }
 
         // Then on all currently connected sockets
-        for (_, peer) in self.registry.iter() {
+        for peer in self.registry.get_peers() {
             if let Some(ref sock) = peer.lock().endpoint().conn {
                 sock.set_fwmark(mark)?
             }
@@ -565,7 +565,7 @@ impl<R: Registry> Device<R> {
                 };
 
                 // Go over each peer and invoke the timer function
-                for (_, peer) in d.registry.iter() {
+                for peer in d.registry.get_peers() {
                     let mut p = peer.lock();
                     let endpoint_addr = match p.endpoint().addr {
                         Some(addr) => addr,
@@ -807,7 +807,6 @@ impl<R: Registry> Device<R> {
                 let udp4 = d.udp4.as_ref().expect("Not connected");
                 let udp6 = d.udp6.as_ref().expect("Not connected");
 
-                let peers = d.registry.get_by_allowed_ip();
                 for _ in 0..MAX_ITR {
                     let src = match iface.read(&mut t.src_buf[..mtu]) {
                         Ok(src) => src,
@@ -830,7 +829,8 @@ impl<R: Registry> Device<R> {
                         None => continue,
                     };
 
-                    let mut peer = match peers.find(dst_addr) {
+                    let peer = d.registry.get_by_addr(dst_addr);
+                    let mut peer = match &peer {
                         Some(peer) => peer.lock(),
                         None => continue,
                     };
